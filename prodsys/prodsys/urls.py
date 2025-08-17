@@ -16,13 +16,14 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from core import auth as core_auth
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
     TokenVerifyView,
 )
 urlpatterns = [
-        path("admin/", admin.site.urls),
+    path("admin/", admin.site.urls),
 
     # JWT Authentication
     path("api/auth/login/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
@@ -30,6 +31,7 @@ urlpatterns = [
     path("api/auth/verify/", TokenVerifyView.as_view(), name="token_verify"),
 
     # Local apps
+    path("api/", include(core_auth)),  # JWT endpoints
     path("api/core/", include("core.urls")),
     path("api/inventory/", include("inventory.urls")),
     path("api/reports/", include("reports.urls")),
