@@ -12,6 +12,8 @@ Includes **role-based access control, exportable reports (PDF/Excel), dashboards
 - Audit trail for report changes and approvals.
 - Soft-delete with admin restore/delete.
 - Lock reports after approval to prevent edits.
+- **User Registration**: `/api/register/` endpoint for new users.
+- **User Login**: JWT token obtain/refresh/verify endpoints under `/api/auth/`.
 
 ### Reports
 - Compare estimated vs actual usage & output.
@@ -22,7 +24,6 @@ Includes **role-based access control, exportable reports (PDF/Excel), dashboards
 - KPIs and dashboards (daily, weekly, monthly, yearly).
 - Organized by **Section, Machine, Operator, Job No.**
 
-
 ## Tech Stack
 
 - **Backend**: Django, Django REST Framework
@@ -32,6 +33,20 @@ Includes **role-based access control, exportable reports (PDF/Excel), dashboards
 - **Filtering**: django-filter
 - **Audit Trail**: custom + django signals
 
+## API Endpoints
+
+| Endpoint                     | Method | Description                          |
+|-------------------------------|--------|--------------------------------------|
+| `/api/register/`              | POST   | Register a new user                   |
+| `/api/auth/login/`            | POST   | Obtain JWT token                      |
+| `/api/auth/refresh/`          | POST   | Refresh JWT token                     |
+| `/api/auth/verify/`           | POST   | Verify JWT token                      |
+| `/api/reports/`               | GET/POST | List or create production reports   |
+| `/api/reports/{id}/approve/` | POST   | Approve a production report           |
+| `/api/reports/export_csv/`    | GET    | Export all production reports to CSV  |
+| `/api/reports/import_csv/`    | POST   | Bulk import production reports via CSV|
+| `/api/inventory/`             | ...    | Inventory management endpoints        |
+| `/api/summary/`               | GET    | Dashboard & KPIs                      |
 
 ## Project Structure
 
