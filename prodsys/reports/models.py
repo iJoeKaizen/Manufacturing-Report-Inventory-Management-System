@@ -1,6 +1,11 @@
 from django.db import models
+from django.conf import settings
 
-# Create your models here.
+class SoftDeleteManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(is_deleted=False)
+
+
 from django.db import models
 from django.conf import settings
 from inventory.models import Machine, Section
@@ -8,29 +13,32 @@ from inventory.models import Machine, Section
 class SoftDeleteManager(models.Manager):
     def get_queryset(self):
         return super().get_queryset().filter(is_deleted=False)
-
-
 class ProductionReport(models.Model):
     class Status(models.TextChoices):
         DRAFT = "DRAFT", "Draft"
         SUBMITTED = "SUBMITTED", "Submitted"
         APPROVED = "APPROVED", "Approved"
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="reports")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="reports"
+    )
     machine = models.ForeignKey(Machine, on_delete=models.CASCADE, related_name="reports")
     section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name="reports")
     job_number = models.CharField(max_length=50, db_index=True)
+    quantity_produced = models.IntegerField(default=0)
+    downtime_minutes = models.IntegerField(default=0)
 
     input_raw_materials = models.DecimalField(max_digits=10, decimal_places=2)
     output_products = models.DecimalField(max_digits=10, decimal_places=2)
     consumables_used = models.DecimalField(max_digits=10, decimal_places=2)
+    waste = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     estimated_input = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     estimated_output = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-
     remarks = models.TextField(blank=True, null=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT, db_index=True)
-
     is_deleted = models.BooleanField(default=False, db_index=True)
 
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -38,7 +46,7 @@ class ProductionReport(models.Model):
     approved_at = models.DateTimeField(null=True, blank=True)
 
     objects = SoftDeleteManager()
-    all_objects = models.Manager()  # include deleted
+    all_objects = models.Manager()
 
     class Meta:
         indexes = [
@@ -52,15 +60,28 @@ class ProductionReport(models.Model):
             orig = ProductionReport.all_objects.get(pk=self.pk)
             if orig.status == self.Status.APPROVED and self.status != orig.status:
                 raise ValueError("Cannot update an approved report.")
+
+        if self.input_raw_materials is not None and self.output_products is not None:
+            self.waste = self.input_raw_materials - self.output_products
+
         super().save(*args, **kwargs)
+
+    @property
+    def net_output(self):
+        return self.output_products - self.waste
+
+    @property
+    def efficiency(self):
+        if self.input_raw_materials:
+            return round((self.output_products / self.input_raw_materials) * 100, 2)
+        return 0
 
     def delete(self, *args, **kwargs):
         self.is_deleted = True
         self.save()
 
     def __str__(self):
-        return f"Report {self.job_number} ({self.status})"
-
+        return f"{self.job_number} ({self.status})"
 
 class ReportAuditTrail(models.Model):
     class ChangeType(models.TextChoices):

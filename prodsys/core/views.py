@@ -1,3 +1,21 @@
-from django.shortcuts import render
+# core/views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response  
+from rest_framework import generics
+from rest_framework import status
+from .serializers import RegisterSerializer
 
-# Create your views here.
+class CoreView(APIView):
+    def get(self, request):
+        return Response({"message": "Core endpoint works!"})
+
+
+class RegisterView(generics.CreateAPIView):
+    serializer_class = RegisterSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
+
