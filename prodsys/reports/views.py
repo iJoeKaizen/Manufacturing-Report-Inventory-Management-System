@@ -6,11 +6,11 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.http import HttpResponse
 from django.core.files.uploadedfile import InMemoryUploadedFile
 import csv, io
-
 from .models import ProductionReport
 from .serializers import ProductionReportSerializer
 from .filters import ProductionReportFilter
 from inventory.models import Machine
+from rest_framework.views import APIView
 
 
 class ProductionReportViewSet(viewsets.ModelViewSet):
@@ -142,3 +142,29 @@ class ProductionReportViewSet(viewsets.ModelViewSet):
             "Remarks"
         ])
         return response
+    
+# @api_view(["GET"])
+# def reports_root(request):
+#     reports = ProductionReport.objects.all()
+#     serializer = ProductionReportSerializer(reports, many=True)
+#     return Response(serializer.data)
+
+class ReportsRootView(APIView):
+    """
+    Custom root view for /api/reports/
+    Shows router links and optionally first N production reports
+    """
+    def get(self, request, format=None):
+        # Router links
+        links = {
+            "production-reports": request.build_absolute_uri("/api/reports/production-reports/"),
+        }
+        
+        # Optional: include some production reports (latest 10)
+        reports = ProductionReport.objects.order_by("-created_at")[:10]
+        serializer = ProductionReportSerializer(reports, many=True)
+        
+        return Response({
+            "links": links,
+            "latest_reports": serializer.data
+        })
