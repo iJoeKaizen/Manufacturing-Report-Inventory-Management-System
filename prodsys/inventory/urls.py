@@ -1,12 +1,18 @@
-# inventory/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import SectionViewSet, MachineViewSet
+from .views import (
+    InventoryItemViewSet,
+    StockMovementViewSet,
+    InventoryDashboardView,
+    InventoryPageView
+)
 
 router = DefaultRouter()
-router.register(r'sections', SectionViewSet)
-router.register(r'machines', MachineViewSet)
+router.register(r"items", InventoryItemViewSet, basename="inventory-items")
+router.register(r"movements", StockMovementViewSet, basename="inventory-movements")
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path("dashboard/", InventoryDashboardView.as_view(), name="inventory-dashboard"),
+    # path("", include(router.urls)),
+    path("", InventoryPageView.as_view(), name="inventory"),
 ]

@@ -1,18 +1,16 @@
 from django.db import models
 from django.conf import settings
+from inventory.models import InventoryItem
+from production.models import Machine, Section
+from inventory.models import InventoryItem
+from production.models import Machine, Section
+
 
 class SoftDeleteManager(models.Manager):
     def get_queryset(self):
         return super().get_queryset().filter(is_deleted=False)
 
 
-from django.db import models
-from django.conf import settings
-from inventory.models import Machine, Section
-
-class SoftDeleteManager(models.Manager):
-    def get_queryset(self):
-        return super().get_queryset().filter(is_deleted=False)
 class ProductionReport(models.Model):
     class Status(models.TextChoices):
         DRAFT = "DRAFT", "Draft"
@@ -27,6 +25,7 @@ class ProductionReport(models.Model):
     machine = models.ForeignKey(Machine, on_delete=models.CASCADE, related_name="reports")
     section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name="reports")
     job_number = models.CharField(max_length=50, db_index=True)
+
     quantity_produced = models.IntegerField(default=0)
     downtime_minutes = models.IntegerField(default=0)
 
@@ -37,6 +36,7 @@ class ProductionReport(models.Model):
 
     estimated_input = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     estimated_output = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
     remarks = models.TextField(blank=True, null=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT, db_index=True)
     is_deleted = models.BooleanField(default=False, db_index=True)
@@ -59,7 +59,7 @@ class ProductionReport(models.Model):
         if self.pk:
             orig = ProductionReport.all_objects.get(pk=self.pk)
             if orig.status == self.Status.APPROVED and self.status != orig.status:
-                raise ValueError("Cannot update an approved report.")
+                raise ValueError("Cannot change the status of an approved report.")
 
         if self.input_raw_materials is not None and self.output_products is not None:
             self.waste = self.input_raw_materials - self.output_products
@@ -82,6 +82,7 @@ class ProductionReport(models.Model):
 
     def __str__(self):
         return f"{self.job_number} ({self.status})"
+
 
 class ReportAuditTrail(models.Model):
     class ChangeType(models.TextChoices):
@@ -110,3 +111,16 @@ class ExportedReport(models.Model):
 
     def __str__(self):
         return f"{self.report.job_number} exported as {self.file_type}"
+
+
+class MaterialConsumption(models.Model):
+    report = models.ForeignKey(
+        ProductionReport,
+        on_delete=models.CASCADE,
+        related_name="materials_consumed"
+    )
+    raw_item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE)
+    quantity_used = models.DecimalField(max_digits=12, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.raw_item.item_code} - {self.quantity_used}"

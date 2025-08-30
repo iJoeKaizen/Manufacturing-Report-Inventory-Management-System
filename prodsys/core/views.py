@@ -1,9 +1,15 @@
-# core/views.py
+from rest_framework import viewsets, status, generics
 from rest_framework.views import APIView
-from rest_framework.response import Response  
-from rest_framework import generics
-from rest_framework import status
-from .serializers import RegisterSerializer
+from rest_framework.response import Response
+from django.views.generic import TemplateView
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth import get_user_model
+
+from .serializers import RegisterSerializer, UserSerializer
+from .permissions import ReportPermission  # centralized role-based permissions
+
+User = get_user_model()
+
 
 class CoreView(APIView):
     def get(self, request):
@@ -18,4 +24,66 @@ class RegisterView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
+
+
+class DashboardView(LoginRequiredMixin, TemplateView):
+    template_name = "dashboard.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user = self.request.user
+
+        context["username"] = user.username
+        context["role"] = user.role
+
+        # Role-specific menus
+        if user.role == "OPERATOR":
+            context["menu"] = [
+                {"name": "My Reports", "url": "/reports/my/"},
+                {"name": "Submit Report", "url": "/reports/create/"},
+            ]
+        elif user.role == "SUPERVISOR":
+            context["menu"] = [
+                {"name": "All Reports", "url": "/reports/"},
+                {"name": "Approve Reports", "url": "/reports/approve/"},
+            ]
+        elif user.role == "MANAGER":
+            context["menu"] = [
+                {"name": "Reports Overview", "url": "/reports/"},
+                {"name": "Manage Inventory", "url": "/inventory/"},
+                {"name": "Team Performance", "url": "/performance/"},
+            ]
+        elif user.role == "ADMIN":
+            context["menu"] = [
+                {"name": "System Dashboard", "url": "/admin-dashboard/"},
+                {"name": "User Management", "url": "/users/"},
+                {"name": "Reports", "url": "/reports/"},
+                {"name": "Inventory", "url": "/inventory/"},
+            ]
+        else:
+            context["menu"] = []
+
+        return context
+
+
+# Role Assignment (Admins only)
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    # permission_classes = [IsAdmin]  # centralized role check
+
+    def update(self, request, *args, **kwargs):
+        """
+        Admin can update user role.
+        """
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+
+        role = request.data.get("role")
+        if role:
+            instance.role = role
+            instance.save()
+            return Response({"message": f"Role updated to {role}"}, status=status.HTTP_200_OK)
+
+        return Response({"error": "Role not provided"}, status=status.HTTP_400_BAD_REQUEST)
 

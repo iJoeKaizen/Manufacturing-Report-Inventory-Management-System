@@ -1,7 +1,7 @@
 # reports/serializers.py
 from rest_framework import serializers
 from .models import ProductionReport
-from inventory.models import Machine, Section
+from production.models import Machine, Section
 
 
 class MachineSerializer(serializers.ModelSerializer):

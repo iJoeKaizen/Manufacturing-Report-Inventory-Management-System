@@ -1,64 +1,68 @@
-from rest_framework.permissions import BasePermission, SAFE_METHODS
+from rest_framework import permissions
 from reports.models import ProductionReport
 
-class IsOperator(BasePermission):
-    def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role == "OPERATOR"
 
-
-class IsSupervisor(BasePermission):
-    def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in ["SUPERVISOR", "MANAGER", "ADMIN"]
-
-
-class IsManager(BasePermission):
-    def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in ["MANAGER", "ADMIN"]
-
-
-class IsAdmin(BasePermission):
-    def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role == "ADMIN"
-
-
-class ReportPermission(BasePermission):
+class ReportPermission(permissions.BasePermission):
     """
-    Role-based object-level rules for ProductionReport.
+    Centralized role-based access control for ProductionReport.
     """
+
+    role_perms = {
+        "OPERATOR": {
+            "list": True, "retrieve": True, "create": True,
+            "update": True, "partial_update": True,
+            "approve": False, "delete": False,
+            "import_csv": False, "commit_csv": False,
+            "preview_csv": False, "download_csv_template": False,
+            "export_csv": False,
+        },
+        "SUPERVISOR": {
+            "list": True, "retrieve": True,
+            "create": False, "update": False, "partial_update": False,
+            "approve": True, "delete": False,
+            "import_csv": False, "commit_csv": False,
+            "preview_csv": False, "download_csv_template": False,
+            "export_csv": True,
+        },
+        "MANAGER": {
+            "list": True, "retrieve": True, "create": True,
+            "update": True, "partial_update": True,
+            "approve": True, "delete": True,
+            "import_csv": True, "commit_csv": True,
+            "preview_csv": True, "download_csv_template": True,
+            "export_csv": True,
+        },
+        "ADMIN": {
+            # Admins unrestricted
+            "list": True, "retrieve": True, "create": True,
+            "update": True, "partial_update": True,
+            "approve": True, "delete": True,
+            "import_csv": True, "commit_csv": True,
+            "preview_csv": True, "download_csv_template": True,
+            "export_csv": True,
+        },
+    }
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        role = getattr(user, "role", "OPERATOR")
+        action = getattr(view, "action", None)
+
+        # Allow schema generation & browsable API
+        if action is None:
+            return True
+
+        return self.role_perms.get(role, {}).get(action, False)
 
     def has_object_permission(self, request, view, obj: ProductionReport):
         user = request.user
+        role = getattr(user, "role", "OPERATOR")
 
-        # Operators: can only view or edit own reports (not after approval)
-        if user.role == "OPERATOR":
-            if request.method in SAFE_METHODS:
-                return obj.user == user
-            if request.method in ["PUT", "PATCH"]:
-                return obj.user == user and obj.status != ProductionReport.Status.APPROVED
-            if request.method == "DELETE":
-                return False
-            return False
+        # Operators can only act on their own reports
+        if role == "OPERATOR":
+            return getattr(obj, "created_by", None) == user
 
-        # Supervisors: can read all, approve reports
-        if user.role == "SUPERVISOR":
-            if request.method in SAFE_METHODS:
-                return True
-            if view.action == "approve":
-                return obj.status != ProductionReport.Status.APPROVED
-            return False
-
-        # Managers: full CRUD, except cannot edit after approval
-        if user.role == "MANAGER":
-            if request.method in SAFE_METHODS:
-                return True
-            if request.method in ["PUT", "PATCH"]:
-                return obj.status != ProductionReport.Status.APPROVED
-            if request.method == "DELETE":
-                return True
-            return True
-
-        # Admin: unrestricted
-        if user.role == "ADMIN":
-            return True
-
-        return False
+        return True
