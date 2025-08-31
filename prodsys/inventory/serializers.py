@@ -6,7 +6,7 @@ from .models import InventoryItem, StockMovement
 # Inventory Item Serializer
 # ---------------------------
 class InventoryItemSerializer(serializers.ModelSerializer):
-    is_below_reorder = serializers.SerializerMethodField(read_only=True)
+    is_below_reorder = serializers.SerializerMethodField()
 
     class Meta:
         model = InventoryItem
@@ -58,16 +58,18 @@ class StockMovementSerializer(serializers.ModelSerializer):
 # ---------------------------
 # Stock Action Serializers
 # ---------------------------
-class StockInSerializer(serializers.Serializer):
-    quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
+class StockBaseActionSerializer(serializers.Serializer):
+    """Base serializer for stock actions (for consistency)."""
     reference = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
-class StockOutSerializer(serializers.Serializer):
+class StockInSerializer(StockBaseActionSerializer):
     quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
-    reference = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
+class StockOutSerializer(StockBaseActionSerializer):
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
 
     def validate_quantity(self, value):
         item = self.context.get("item")
@@ -76,19 +78,15 @@ class StockOutSerializer(serializers.Serializer):
         return value
 
 
-class StockAdjustSerializer(serializers.Serializer):
+class StockAdjustSerializer(StockBaseActionSerializer):
     delta = serializers.DecimalField(max_digits=12, decimal_places=2)
-    reference = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
-class StockTransferSerializer(serializers.Serializer):
+class StockTransferSerializer(StockBaseActionSerializer):
     to_item_id = serializers.PrimaryKeyRelatedField(
         queryset=InventoryItem.objects.all(), source="to_item"
     )
     quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
-    reference = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     def validate_quantity(self, value):
         item = self.context.get("item")

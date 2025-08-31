@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 
-from core.permissions import ReportPermission
+from accounts.permissions import ReportPermission
 from .models import ProductionReport, ReportAuditTrail
 from .serializers import ProductionReportSerializer
 from .filters import ProductionReportFilter

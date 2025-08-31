@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "reports",
     "summary",
     "production",
+    "accounts",
 ]
 
 MIDDLEWARE = [
@@ -142,6 +143,11 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+
+LOGIN_URL = "/api/auth/login/"
+LOGIN_REDIRECT_URL = "/dashboard/"
+
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
@@ -172,4 +178,4 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-AUTH_USER_MODEL = 'core.User'
+AUTH_USER_MODEL = "accounts.User"

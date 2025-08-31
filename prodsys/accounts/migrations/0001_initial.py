@@ -29,12 +29,14 @@ class Migration(migrations.Migration):
                 ('is_staff', models.BooleanField(default=False, help_text='Designates whether the user can log into this admin site.', verbose_name='staff status')),
                 ('is_active', models.BooleanField(default=True, help_text='Designates whether this user should be treated as active. Unselect this instead of deleting accounts.', verbose_name='active')),
                 ('date_joined', models.DateTimeField(default=django.utils.timezone.now, verbose_name='date joined')),
-                ('role', models.CharField(choices=[('OPERATOR', 'Operator'), ('SUPERVISOR', 'Supervisor'), ('MANAGER', 'Manager'), ('ADMIN', 'Admin')], db_index=True, default='OPERATOR', max_length=20)),
-                ('groups', models.ManyToManyField(blank=True, help_text='The groups this user belongs to.', related_name='custom_users', to='auth.group', verbose_name='groups')),
-                ('user_permissions', models.ManyToManyField(blank=True, help_text='Specific permissions for this user.', related_name='custom_users_permissions', to='auth.permission', verbose_name='user permissions')),
+                ('role', models.CharField(choices=[('admin', 'Admin'), ('manager', 'Manager'), ('operator', 'Operator')], default='operator', max_length=20)),
+                ('groups', models.ManyToManyField(blank=True, help_text='The groups this user belongs to. A user will get all permissions granted to each of their groups.', related_name='user_set', related_query_name='user', to='auth.group', verbose_name='groups')),
+                ('user_permissions', models.ManyToManyField(blank=True, help_text='Specific permissions for this user.', related_name='user_set', related_query_name='user', to='auth.permission', verbose_name='user permissions')),
             ],
             options={
-                'indexes': [models.Index(fields=['username'], name='core_user_usernam_e8adca_idx'), models.Index(fields=['email'], name='core_user_email_38052c_idx')],
+                'verbose_name': 'user',
+                'verbose_name_plural': 'users',
+                'abstract': False,
             },
             managers=[
                 ('objects', django.contrib.auth.models.UserManager()),

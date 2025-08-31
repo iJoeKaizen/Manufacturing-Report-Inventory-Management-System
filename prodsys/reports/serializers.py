@@ -1,26 +1,18 @@
-# reports/serializers.py
 from rest_framework import serializers
 from .models import ProductionReport
 from production.models import Machine, Section
-
-
-class MachineSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Machine
-        fields = ["id", "name"]
-
-
-class SectionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Section
-        fields = ["id", "name"]
+from production.serializers import MachineSerializer, SectionSerializer
 
 
 class ProductionReportSerializer(serializers.ModelSerializer):
     net_output = serializers.ReadOnlyField()
     efficiency = serializers.ReadOnlyField()
+    
+    # Use nested serializers for read
     machine = MachineSerializer(read_only=True)
     section = SectionSerializer(read_only=True)
+    
+    # IDs for write
     machine_id = serializers.PrimaryKeyRelatedField(
         queryset=Machine.objects.all(), write_only=True, source="machine"
     )
@@ -52,7 +44,7 @@ class ProductionReportSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at", "waste", "net_output", "efficiency"]
 
     def create(self, validated_data):
-        # attach logged-in user
+        # Attach logged-in user
         user = self.context["request"].user
         validated_data["user"] = user
         return super().create(validated_data)

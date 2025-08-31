@@ -229,7 +229,7 @@ class StockMovementViewSet(mixins.ListModelMixin,
     ordering = ["-timestamp"]
 
 
-# --- Dashboard ---
+# --- Dashboard API ---
 class InventoryDashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -247,25 +247,51 @@ class InventoryDashboardView(APIView):
         recent = StockMovement.objects.select_related("item").order_by("-timestamp")[:10]
         recent_serialized = StockMovementSerializer(recent, many=True).data
 
+        # --- Role-based permissions for frontend ---
+        role = getattr(request.user, "role", "OPERATOR").upper()
+        permissions_map = {
+            "OPERATOR": {"can_edit": False, "can_delete": False, "can_stock_in_out": True},
+            "SUPERVISOR": {"can_edit": False, "can_delete": False, "can_stock_in_out": True},
+            "MANAGER": {"can_edit": True, "can_delete": True, "can_stock_in_out": True},
+            "ADMIN": {"can_edit": True, "can_delete": True, "can_stock_in_out": True},
+        }
+        role_permissions = permissions_map.get(role, {"can_edit": False, "can_delete": False, "can_stock_in_out": False})
+
         return Response({
             "totals_by_category": totals_by_category,
             "low_stock_count": low_count,
             "low_stock_items": low_items,
             "recent_movements": recent_serialized,
+            "permissions": role_permissions,
+            "role": role,
         })
 
+
+# --- Inventory Template Page ---
 class InventoryPageView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     template_name = "inventory.html"
 
     def test_func(self):
-        return self.request.user.role in ["Operator", "Manager", "Admin"]
+        return getattr(self.request.user, "role", "").upper() in ["OPERATOR", "MANAGER", "ADMIN"]
 
     def handle_no_permission(self):
         return redirect("dashboard")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["role"] = self.request.user.role
-        # Base API endpoint for JS
+        role = getattr(self.request.user, "role", "OPERATOR").upper()
+        context["role"] = role
+
+        # Base API endpoints
         context["inventory_api_url"] = "/api/inventory/items/"
+        context["dashboard_api_url"] = "/api/inventory/dashboard/"
+
+        # Role-based permissions for frontend buttons
+        permissions_map = {
+            "OPERATOR": {"can_edit": False, "can_delete": False, "can_stock_in_out": True},
+            "SUPERVISOR": {"can_edit": False, "can_delete": False, "can_stock_in_out": True},
+            "MANAGER": {"can_edit": True, "can_delete": True, "can_stock_in_out": True},
+            "ADMIN": {"can_edit": True, "can_delete": True, "can_stock_in_out": True},
+        }
+        context["permissions"] = permissions_map.get(role, {"can_edit": False, "can_delete": False, "can_stock_in_out": False})
         return context

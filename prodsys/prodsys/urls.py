@@ -20,8 +20,8 @@ router.register(r'users', UserViewSet, basename="users")  # only Admin can assig
 urlpatterns = [
     path("admin/", admin.site.urls),
 
-    # Browsable API login/logout (optional for DRF UI)
-    path("api/auth/", include("rest_framework.urls")),
+    # DRF browsable API login/logout (optional, only for the API web UI)
+    path("api/auth/browsable/", include("rest_framework.urls")),
 
     # Root → redirect to dashboard
     path("", lambda request: redirect("dashboard/")),
@@ -30,12 +30,13 @@ urlpatterns = [
     path("dashboard/", login_required(DashboardView.as_view()), name="dashboard"),
 
     # JWT Authentication
+    path("api/auth/register/", include("accounts.urls")),   # ✅ your custom register/login
     path("api/auth/login/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/auth/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/auth/verify/", TokenVerifyView.as_view(), name="token_verify"),
 
     # Local apps
-    path("api/core/", include("core.urls")),       # core app (register, roles, etc.)
+    path("api/core/", include("core.urls")),       
     path("inventory/", include("inventory.urls")),  
     path("api/reports/", include("reports.urls")), 
     path("api/summary/", include("summary.urls")), 

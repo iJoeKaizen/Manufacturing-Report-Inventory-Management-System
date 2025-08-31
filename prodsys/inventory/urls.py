@@ -13,6 +13,6 @@ router.register(r"movements", StockMovementViewSet, basename="inventory-movement
 
 urlpatterns = [
     path("dashboard/", InventoryDashboardView.as_view(), name="inventory-dashboard"),
-    # path("", include(router.urls)),
-    path("", InventoryPageView.as_view(), name="inventory"),
+    path("api/", include(router.urls)),   # <-- JSON API endpoints
+    path("", InventoryPageView.as_view(), name="inventory"),  # <-- Web dashboard
 ]

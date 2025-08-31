@@ -5,8 +5,9 @@ from django.views.generic import TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth import get_user_model
 
-from .serializers import RegisterSerializer, UserSerializer
-from .permissions import ReportPermission  # centralized role-based permissions
+from accounts.serializers import RegisterSerializer, UserSerializer
+from rest_framework.permissions import IsAuthenticated
+from accounts.permissions import ReportPermission  # centralized role-based permissions
 
 User = get_user_model()
 
@@ -26,44 +27,44 @@ class RegisterView(generics.CreateAPIView):
         return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
 
 
-class DashboardView(LoginRequiredMixin, TemplateView):
-    template_name = "dashboard.html"
+class DashboardView(APIView):
+    permission_classes = [IsAuthenticated]
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        user = self.request.user
-
-        context["username"] = user.username
-        context["role"] = user.role
+    def get(self, request):
+        user = request.user
+        data = {
+            "username": user.username,
+            "role": user.role,
+        }
 
         # Role-specific menus
         if user.role == "OPERATOR":
-            context["menu"] = [
+            data["menu"] = [
                 {"name": "My Reports", "url": "/reports/my/"},
                 {"name": "Submit Report", "url": "/reports/create/"},
             ]
         elif user.role == "SUPERVISOR":
-            context["menu"] = [
+            data["menu"] = [
                 {"name": "All Reports", "url": "/reports/"},
                 {"name": "Approve Reports", "url": "/reports/approve/"},
             ]
         elif user.role == "MANAGER":
-            context["menu"] = [
+            data["menu"] = [
                 {"name": "Reports Overview", "url": "/reports/"},
                 {"name": "Manage Inventory", "url": "/inventory/"},
                 {"name": "Team Performance", "url": "/performance/"},
             ]
         elif user.role == "ADMIN":
-            context["menu"] = [
+            data["menu"] = [
                 {"name": "System Dashboard", "url": "/admin-dashboard/"},
                 {"name": "User Management", "url": "/users/"},
                 {"name": "Reports", "url": "/reports/"},
                 {"name": "Inventory", "url": "/inventory/"},
             ]
         else:
-            context["menu"] = []
+            data["menu"] = []
 
-        return context
+        return Response(data)
 
 
 # Role Assignment (Admins only)
