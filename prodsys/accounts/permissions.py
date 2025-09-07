@@ -1,16 +1,12 @@
 from rest_framework import permissions, serializers
 from django.contrib.auth import get_user_model
 from reports.models import ProductionReport
+from .utils import get_user_role
 
 User = get_user_model()
 
 
 class ReportPermission(permissions.BasePermission):
-    """
-    Centralized role-based access control for ProductionReport.
-    Works with both ViewSets (view.action) and APIViews (request.method).
-    """
-
     role_perms = {
         "OPERATOR": {
             "list": True, "retrieve": True, "create": True,
@@ -37,17 +33,16 @@ class ReportPermission(permissions.BasePermission):
             "export_csv": True,
         },
         "ADMIN": {
-            # Admins unrestricted
             "list": True, "retrieve": True, "create": True,
             "update": True, "partial_update": True,
             "approve": True, "delete": True,
             "import_csv": True, "commit_csv": True,
-            "preview_csv": True, "download_csv_template": True,
+            "preview_csv": True,
+            "download_csv_template": True,
             "export_csv": True,
         },
     }
 
-    # Map HTTP methods to actions when using APIView
     method_action_map = {
         "get": "list",
         "post": "create",
@@ -61,25 +56,19 @@ class ReportPermission(permissions.BasePermission):
         if not user or not user.is_authenticated:
             return False
 
-        role = getattr(user, "role", "operator").upper()
-
-        # Prefer DRF ViewSet's `action` if available
+        role = get_user_role(user)
         action = getattr(view, "action", None)
         if not action:
-            # Fallback for APIView
             action = self.method_action_map.get(request.method.lower())
-
-        # Allow schema generation & browsable API
-        if action is None:
+        if not action:
             return True
 
         return self.role_perms.get(role, {}).get(action, False)
 
-    def has_object_permission(self, request, view, obj: ProductionReport):
+    def has_object_permission(self, request, view, obj):
         user = request.user
-        role = getattr(user, "role", "operator").upper()
+        role = get_user_role(user)
 
-        # Operators can only act on their own reports
         if role == "OPERATOR":
             return getattr(obj, "created_by", None) == user
 
@@ -87,6 +76,31 @@ class ReportPermission(permissions.BasePermission):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    role = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ("id", "username", "email", "role")
+        fields = ["id", "username", "email", "role"]
+
+    def get_role(self, obj):
+        return get_user_role(obj)
+
+
+class IsAdminOrSelf(permissions.BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_superuser:
+            return True
+        if view.action in ["retrieve", "update", "partial_update"]:
+            return True
+        return False
+
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+        if user.is_superuser:
+            return True
+        if view.action in ["retrieve", "update", "partial_update"]:
+            return obj == user
+        return False

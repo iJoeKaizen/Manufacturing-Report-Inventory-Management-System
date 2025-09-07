@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Inventory Dashboard{% endblock %}
+
+{% block content %}
+
+<div class="flex min-h-screen bg-gray-100" x-data="{ sidebarOpen:true, sidebarCollapsed:false, openInventory:true, openReports:false }">
+
+  <!-- sidebar -->
+  <aside class="bg-gray-900 text-white flex flex-col transition-all duration-200" 
+         :class="sidebarCollapsed ? 'w-16':'w-64'" 
+         :style="sidebarOpen ? 'transform:translateX(0)':'transform:translateX(-100%)'">
+
+    <div class="p-4 flex items-center justify-between border-b border-gray-700">
+      <span x-show="!sidebarCollapsed" class="font-bold text-lg">📦 Inventory</span>
+      <span x-show="sidebarCollapsed" class="text-xl">📦</span>
+      <button class="md:hidden text-gray-300 hover:text-white" @click="sidebarOpen=false">✕</button>
+    </div>
+
+    <nav class="flex-1 p-2 space-y-2 text-sm">
+      <a href="{% url 'inventory:inventory-dashboard-page' %}" class="flex items-center px-3 py-2 rounded hover:bg-gray-700">
+        <span>📊</span><span x-show="!sidebarCollapsed" class="ml-2">Dashboard</span>
+      </a>
+
+      <div>
+        <button @click="openInventory=!openInventory" class="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-700">
+          <div class="flex items-center"><span>📦</span><span x-show="!sidebarCollapsed" class="ml-2">Inventory</span></div>
+          <span x-show="!sidebarCollapsed" x-text="openInventory ? '▾':'▸'"></span>
+        </button>
+        <div x-show="openInventory && !sidebarCollapsed" class="ml-6 space-y-1" x-cloak>
+          <a href="{% url 'inventory:inventoryitem-list' %}" class="block px-3 py-1 hover:bg-gray-700 rounded">Inventory Items</a>
+          <a href="{% url 'inventory:inventorymovements-list' %}" class="block px-3 py-1 hover:bg-gray-700 rounded">Stock Movements</a>
+          <a href="{% url 'inventory:material-requests-list' %}" class="block px-3 py-1 hover:bg-gray-700 rounded">Material Requests</a>
+        </div>
+      </div>
+
+      <div>
+        <button @click="openReports=!openReports" class="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-700">
+          <div class="flex items-center"><span>📑</span><span x-show="!sidebarCollapsed" class="ml-2">Reports</span></div>
+          <span x-show="!sidebarCollapsed" x-text="openReports ? '▾':'▸'"></span>
+        </button>
+        <div x-show="openReports && !sidebarCollapsed" class="ml-6 space-y-1" x-cloak>
+          <a href="{% url 'reports:production-report-list' %}" class="block px-3 py-1 hover:bg-gray-700 rounded">Production Reports</a>
+          <a href="#" class="block px-3 py-1 hover:bg-gray-700 rounded">Exported Reports</a>
+        </div>
+      </div>
+
+    </nav>
+
+    <div class="p-4 border-t border-gray-700 flex items-center justify-between">
+      <span x-show="!sidebarCollapsed" class="text-xs">Logged in as {{ user.username }}</span>
+      <a href="{% url 'logout' %}" class="text-red-400 hover:underline text-xs">⎋</a>
+    </div>
+
+  </aside>
+
+  <div class="flex-1 flex flex-col">
+
+    <header class="bg-white shadow px-6 py-4 flex justify-between items-center">
+      <div class="flex items-center space-x-2">
+        <button class="md:hidden text-gray-700" @click="sidebarOpen=true">☰</button>
+        <button class="hidden md:block text-gray-700" @click="sidebarCollapsed=!sidebarCollapsed">
+          <span x-show="sidebarCollapsed">⇥</span>
+          <span x-show="!sidebarCollapsed">⇤</span>
+        </button>
+        <h1 class="text-2xl font-bold">📊 Dashboard</h1>
+      </div>
+      <p class="text-gray-600">Welcome, {{ user.username }} ({{ role }})</p>
+    </header>
+
+    <main class="flex-1 p-6 space-y-6">
+
+      <div class="bg-white shadow rounded p-6">
+        <h2 class="text-lg font-semibold mb-4">📈 Analytics</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div class="text-center"><h3 class="text-sm font-medium text-gray-500">Daily</h3><p class="text-xl font-bold">{{ daily_movements }}</p></div>
+          <div class="text-center"><h3 class="text-sm font-medium text-gray-500">Weekly</h3><p class="text-xl font-bold">{{ weekly_movements }}</p></div>
+          <div class="text-center"><h3 class="text-sm font-medium text-gray-500">Monthly</h3><p class="text-xl font-bold">{{ monthly_movements }}</p></div>
+          <div class="text-center"><h3 class="text-sm font-medium text-gray-500">Yearly</h3><p class="text-xl font-bold">{{ yearly_movements }}</p></div>
+        </div>
+      </div>
+
+      <div class="bg-white shadow rounded p-6">
+        <h2 class="text-lg font-semibold mb-4">⚠️ Low Stock ({{ low_stock_count }})</h2>
+        {% if low_stock_items %}
+        <ul class="list-disc pl-6 space-y-1">
+          {% for item in low_stock_items %}
+          <li>{{ item.name }} - {{ item.quantity }} {{ item.uom }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-green-600">No low stock items 🎉</p>
+        {% endif %}
+      </div>
+
+    </main>
+
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+
+{% endblock %}

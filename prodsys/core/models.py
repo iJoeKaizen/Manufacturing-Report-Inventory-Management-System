@@ -1,13 +1,16 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
+# Custom user model
 class User(AbstractUser):
+    # Define possible roles for users
     class Role(models.TextChoices):
         OPERATOR = "OPERATOR", "Operator"
         SUPERVISOR = "SUPERVISOR", "Supervisor"
         MANAGER = "MANAGER", "Manager"
         ADMIN = "ADMIN", "Admin"
 
+    # Role field
     role = models.CharField(
         max_length=20,
         choices=Role.choices,
@@ -15,7 +18,7 @@ class User(AbstractUser):
         db_index=True,
     )
 
-    # Override groups and permissions to avoid clashes
+    # Groups for permissions
     groups = models.ManyToManyField(
         "auth.Group",
         related_name="custom_users",
@@ -23,6 +26,8 @@ class User(AbstractUser):
         help_text="The groups this user belongs to.",
         verbose_name="groups",
     )
+
+    # Individual permissions
     user_permissions = models.ManyToManyField(
         "auth.Permission",
         related_name="custom_users_permissions",
@@ -37,5 +42,6 @@ class User(AbstractUser):
             models.Index(fields=["email"]),
         ]
 
+    # Show username and role when printing
     def __str__(self):
         return f"{self.username} ({self.role})"

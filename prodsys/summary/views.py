@@ -1,13 +1,7 @@
 from django.db.models import Sum, Avg, F, ExpressionWrapper, FloatField
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from reports.models import ProductionReport  # adjust if your app name is different
-
-from django.db.models import Sum, F, ExpressionWrapper, FloatField
-from rest_framework.response import Response
-from rest_framework.views import APIView
 from reports.models import ProductionReport
-
 
 class SummaryView(APIView):
     def get(self, request):
@@ -36,4 +30,3 @@ class SummaryView(APIView):
             "average_efficiency": round(avg_efficiency, 2),
         }
         return Response(data)
-

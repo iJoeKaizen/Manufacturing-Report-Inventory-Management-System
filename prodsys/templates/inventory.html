@@ -1,99 +1,94 @@
-{% extends "base.html" %}
-{% load static %}
-
-{% block content %}
-<h1 class="text-xl font-bold mb-4">Inventory</h1>
-
-<p class="mb-2">Logged in as: <strong>{{ role }}</strong></p>
-
-<table class="table-auto border-collapse border border-gray-400 w-full" id="inventory-table">
-  <thead>
-    <tr>
-      <th class="border px-4 py-2">Item</th>
-      <th class="border px-4 py-2">Quantity</th>
-      <th class="border px-4 py-2">Unit</th>
-      <th class="border px-4 py-2">Actions</th>
-    </tr>
-  </thead>
-  <tbody></tbody>
-</table>
-
-<!-- Edit / Stock Modal -->
-<div id="stockModal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex justify-center items-center">
-  <div class="bg-white p-6 rounded-lg shadow-lg w-96">
-    <h2 class="text-lg font-bold mb-4" id="modalTitle">Edit Item</h2>
-    <form id="stockForm">
-      <input type="hidden" id="itemId">
-      
-      <label class="block mb-2">Name</label>
-      <input type="text" id="itemName" class="border p-2 w-full mb-2" readonly>
-      
-      <label class="block mb-2">Quantity</label>
-      <input type="number" id="itemQuantity" class="border p-2 w-full mb-2">
-      
-      <label class="block mb-2">Unit</label>
-      <input type="text" id="itemUnit" class="border p-2 w-full mb-4">
-
-      <div class="flex justify-end space-x-2">
-        <button type="button" onclick="closeModal()" class="bg-gray-400 px-4 py-2 rounded">Cancel</button>
-        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded" id="modalSubmit">Save</button>
-      </div>
-    </form>
-  </div>
-</div>
-
 <script>
+// ====================== CONFIG ======================
 const apiUrl = "{{ inventory_api_url }}";
-const role = "{{ role }}";
-let items = [];
-let currentAction = "edit"; // edit, stock_in, stock_out
 
+// ====================== TOKEN HANDLING ======================
+let accessToken = localStorage.getItem("accessToken") || "{{ request.COOKIES.access|default:'' }}";
+let refreshToken = localStorage.getItem("refreshToken") || "{{ request.COOKIES.refresh|default:'' }}";
+
+function redirectToLogin() {
+  alert("You must login first!");
+  window.location.href = "/login/";
+}
+
+if (!accessToken) redirectToLogin();
+
+// Parse JWT to extract role
+function parseJwt(token) {
+  try { return JSON.parse(atob(token.split('.')[1])); } 
+  catch (e) { return {}; }
+}
+
+let jwtPayload = parseJwt(accessToken);
+let role = jwtPayload.role ? jwtPayload.role.toUpperCase() : "{{ role|upper }}";
+document.getElementById("userRole").innerText = role;
+
+// Role permissions
+const canEdit = ["MANAGER", "ADMIN"].includes(role);
+const canDelete = role === "ADMIN";
+
+// ====================== STATE ======================
+let items = [];
+let currentAction = "edit";
+
+// ====================== LOAD INVENTORY ======================
 async function loadInventory() {
+  if (!accessToken) return redirectToLogin();
   try {
     const res = await fetch(apiUrl, {
-      headers: { "Authorization": "Bearer {{ request.COOKIES.access|default:'' }}" }
+      headers: { "Authorization": `Bearer ${accessToken}` }
     });
+    if (res.status === 401) return redirectToLogin();
+    if (!res.ok) throw new Error("Failed to fetch inventory");
     items = await res.json();
     renderTable();
   } catch (err) {
     console.error(err);
-    alert("Failed to load inventory");
+    alert(err.message);
   }
 }
 
+// ====================== RENDER TABLE ======================
 function renderTable() {
   const tbody = document.querySelector("#inventory-table tbody");
   tbody.innerHTML = "";
 
   items.forEach(item => {
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td class="border px-4 py-2">${item.name}</td>
-      <td class="border px-4 py-2">${item.quantity}</td>
-      <td class="border px-4 py-2">${item.unit}</td>
-      <td class="border px-4 py-2">
-        ${(role === "Manager" || role === "Admin") ? `<button onclick="openModal('edit', ${item.id})" class="bg-yellow-500 px-2 py-1 text-white rounded">Edit</button>` : ""}
-        ${(role === "Manager" || role === "Admin") ? `<button onclick="openModal('stock_in', ${item.id})" class="bg-green-500 px-2 py-1 text-white rounded ml-1">Stock In</button>` : ""}
-        ${(role === "Manager" || role === "Admin") ? `<button onclick="openModal('stock_out', ${item.id})" class="bg-red-500 px-2 py-1 text-white rounded ml-1">Stock Out</button>` : ""}
-        ${role === "Admin" ? `<button onclick="deleteItem(${item.id})" class="bg-gray-800 px-2 py-1 text-white rounded ml-1">Delete</button>` : ""}
-      </td>
+    const actions = [];
+    if (canEdit) {
+      actions.push(`<button onclick="openModal('edit', ${item.id})" class="bg-yellow-500 px-2 py-1 text-white rounded">Edit</button>`);
+      actions.push(`<button onclick="openModal('stock_in', ${item.id})" class="bg-green-500 px-2 py-1 text-white rounded ml-1">Stock In</button>`);
+      actions.push(`<button onclick="openModal('stock_out', ${item.id})" class="bg-red-500 px-2 py-1 text-white rounded ml-1">Stock Out</button>`);
+    }
+    if (canDelete) {
+      actions.push(`<button onclick="deleteItem(${item.id})" class="bg-gray-800 px-2 py-1 text-white rounded ml-1">Delete</button>`);
+    }
+
+    tbody.innerHTML += `
+      <tr>
+        <td class="border px-4 py-2">${item.name}</td>
+        <td class="border px-4 py-2">${item.quantity}</td>
+        <td class="border px-4 py-2">${item.unit}</td>
+        <td class="border px-4 py-2">${actions.join("")}</td>
+      </tr>
     `;
-    tbody.appendChild(row);
   });
 }
 
+// ====================== MODAL ======================
 function openModal(action, id) {
   currentAction = action;
   const item = items.find(i => i.id === id);
 
   document.getElementById("itemId").value = item.id;
   document.getElementById("itemName").value = item.name;
-  document.getElementById("itemQuantity").value = (action === "edit") ? item.quantity : 0;
+  document.getElementById("itemQuantity").value = action === "edit" ? item.quantity : 0;
   document.getElementById("itemUnit").value = item.unit;
-  
-  document.getElementById("modalTitle").innerText = action === "edit" ? "Edit Item" : (action === "stock_in" ? "Stock In" : "Stock Out");
+
+  const titleMap = { edit: "Edit Item", stock_in: "Stock In", stock_out: "Stock Out" };
+  document.getElementById("modalTitle").innerText = titleMap[action] || "Edit Item";
   document.getElementById("modalSubmit").innerText = action === "edit" ? "Save" : "Submit";
-  
+
   document.getElementById("stockModal").classList.remove("hidden");
 }
 
@@ -101,20 +96,19 @@ function closeModal() {
   document.getElementById("stockModal").classList.add("hidden");
 }
 
+// ====================== FORM SUBMISSION ======================
 document.getElementById("stockForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const id = document.getElementById("itemId").value;
   const qty = parseFloat(document.getElementById("itemQuantity").value);
-  
+  if (isNaN(qty) || qty < 0) return alert("Quantity must be >= 0");
+
   let method = "PUT";
-  let bodyData = {};
   let endpoint = `${apiUrl}${id}/`;
+  let bodyData = {};
 
   if (currentAction === "edit") {
-    bodyData = {
-      quantity: qty,
-      unit: document.getElementById("itemUnit").value
-    };
+    bodyData = { quantity: qty, unit: document.getElementById("itemUnit").value };
   } else if (currentAction === "stock_in") {
     method = "POST";
     endpoint += "stock_in/";
@@ -126,36 +120,38 @@ document.getElementById("stockForm").addEventListener("submit", async (e) => {
   }
 
   try {
-    await fetch(endpoint, {
-      method: method,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer {{ request.COOKIES.access|default:'' }}"
-      },
+    const res = await fetch(endpoint, {
+      method,
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}` },
       body: JSON.stringify(bodyData)
     });
+    if (!res.ok) throw new Error(await res.text());
     closeModal();
     loadInventory();
+    alert("Action completed successfully!");
   } catch (err) {
     console.error(err);
-    alert("Action failed");
+    alert("Action failed: " + err.message);
   }
 });
 
+// ====================== DELETE ======================
 async function deleteItem(id) {
   if (!confirm("Are you sure you want to delete this item?")) return;
   try {
-    await fetch(`${apiUrl}${id}/`, {
+    const res = await fetch(`${apiUrl}${id}/`, {
       method: "DELETE",
-      headers: { "Authorization": "Bearer {{ request.COOKIES.access|default:'' }}" }
+      headers: { "Authorization": `Bearer ${accessToken}` }
     });
+    if (!res.ok) throw new Error(await res.text());
     loadInventory();
+    alert("Item deleted successfully!");
   } catch (err) {
     console.error(err);
-    alert("Failed to delete item");
+    alert("Delete failed: " + err.message);
   }
 }
 
+// ====================== INIT ======================
 document.addEventListener("DOMContentLoaded", loadInventory);
 </script>
-{% endblock %}

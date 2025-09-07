@@ -8,9 +8,9 @@ class InventoryItemAdmin(admin.ModelAdmin):
         "code",
         "category",
         "quantity",
-        "uom",             # fixed
+        "uom",            
         "reorder_level",
-        "last_updated",    # kept
+        "last_updated",  
     )
     list_filter = ("category",)
     search_fields = ("code", "description")
@@ -20,4 +20,4 @@ class InventoryItemAdmin(admin.ModelAdmin):
 class StockMovementAdmin(admin.ModelAdmin):
     list_display = ("item", "movement_type", "quantity", "reference", "timestamp")
     list_filter = ("movement_type", "timestamp")
-    search_fields = ("item__code", "reference", "remarks")  # fixed: item instead of code
+    search_fields = ("item__code", "reference", "remarks")

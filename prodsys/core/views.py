@@ -4,16 +4,18 @@ from rest_framework.response import Response
 from django.views.generic import TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth import get_user_model
-
+from accounts.utils import get_user_role
+from .constants import DASHBOARD_MENU
 from accounts.serializers import RegisterSerializer, UserSerializer
-from rest_framework.permissions import IsAuthenticated
-from accounts.permissions import ReportPermission  # centralized role-based permissions
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from accounts.permissions import ReportPermission
 
 User = get_user_model()
 
 
 class CoreView(APIView):
     def get(self, request):
+        # just a test endpoint
         return Response({"message": "Core endpoint works!"})
 
 
@@ -21,6 +23,7 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
 
     def post(self, request, *args, **kwargs):
+        # serializer stuff
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -32,59 +35,61 @@ class DashboardView(APIView):
 
     def get(self, request):
         user = request.user
+        role = get_user_role(user)
+        menu = []
+        perms = ReportPermission()
+
+        # go through menu items
+        for item in DASHBOARD_MENU:
+            # superuser only
+            if item.get("superuser_only") and not user.is_superuser:
+                continue
+
+            # check custom permission action
+            act = item.get("permission_action")
+            if act:
+                if perms.role_perms.get(role, {}).get(act):
+                    menu.append({"name": item["name"], "url": item["url"]})
+                continue
+
+            # check codename permission
+            code = item.get("permission_codename")
+            if code:
+                if user.has_perm(f'{item["app_label"]}.{code}'):
+                    menu.append({"name": item["name"], "url": item["url"]})
+                continue
+
+            # no special perms, just add
+            if not act and not code and not item.get("superuser_only"):
+                menu.append({"name": item["name"], "url": item["url"]})
+
         data = {
             "username": user.username,
-            "role": user.role,
+            "role": role,
+            "menu": menu
         }
-
-        # Role-specific menus
-        if user.role == "OPERATOR":
-            data["menu"] = [
-                {"name": "My Reports", "url": "/reports/my/"},
-                {"name": "Submit Report", "url": "/reports/create/"},
-            ]
-        elif user.role == "SUPERVISOR":
-            data["menu"] = [
-                {"name": "All Reports", "url": "/reports/"},
-                {"name": "Approve Reports", "url": "/reports/approve/"},
-            ]
-        elif user.role == "MANAGER":
-            data["menu"] = [
-                {"name": "Reports Overview", "url": "/reports/"},
-                {"name": "Manage Inventory", "url": "/inventory/"},
-                {"name": "Team Performance", "url": "/performance/"},
-            ]
-        elif user.role == "ADMIN":
-            data["menu"] = [
-                {"name": "System Dashboard", "url": "/admin-dashboard/"},
-                {"name": "User Management", "url": "/users/"},
-                {"name": "Reports", "url": "/reports/"},
-                {"name": "Inventory", "url": "/inventory/"},
-            ]
-        else:
-            data["menu"] = []
 
         return Response(data)
 
 
-# Role Assignment (Admins only)
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    # permission_classes = [IsAdmin]  # centralized role check
+    permission_classes = [IsAuthenticated, IsAdminUser]
 
     def update(self, request, *args, **kwargs):
-        """
-        Admin can update user role.
-        """
-        partial = kwargs.pop("partial", False)
-        instance = self.get_object()
+        # messy update method
+        u = self.get_object()
+        is_staff = request.data.get("is_staff")
+        is_superuser = request.data.get("is_superuser")
 
-        role = request.data.get("role")
-        if role:
-            instance.role = role
-            instance.save()
-            return Response({"message": f"Role updated to {role}"}, status=status.HTTP_200_OK)
+        if is_superuser is not None:
+            if not request.user.is_superuser:
+                return Response({"error": "Only superusers can set is_superuser."}, status=403)
+            u.is_superuser = is_superuser
 
-        return Response({"error": "Role not provided"}, status=status.HTTP_400_BAD_REQUEST)
+        if is_staff is not None:
+            u.is_staff = is_staff
 
+        u.save()
+        return Response({"message": "User updated successfully."})

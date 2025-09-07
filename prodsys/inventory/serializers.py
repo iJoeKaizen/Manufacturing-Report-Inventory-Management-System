@@ -1,65 +1,36 @@
 from rest_framework import serializers
-from .models import InventoryItem, StockMovement
+from .models import InventoryItem, StockMovement, MaterialRequest
 
-
-# ---------------------------
-# Inventory Item Serializer
-# ---------------------------
 class InventoryItemSerializer(serializers.ModelSerializer):
     is_below_reorder = serializers.SerializerMethodField()
 
     class Meta:
         model = InventoryItem
         fields = [
-            "id",
-            "code",
-            "name",
-            "width",
-            "length",
-            "thickness",
-            "gsm",
-            "weight",
-            "description",
-            "category",
-            "uom",
-            "quantity",
-            "reorder_level",
-            "last_updated",
-            "is_below_reorder",
+            "id", "code", "name", "width", "length", "thickness", "gsm",
+            "weight", "description", "category", "uom", "quantity",
+            "reorder_level", "last_updated", "is_below_reorder",
         ]
         read_only_fields = ["id", "last_updated", "is_below_reorder"]
 
     def get_is_below_reorder(self, obj):
-        return obj.is_below_reorder()
+        result = obj.is_below_reorder()
+        return result
 
 
-# ---------------------------
-# Stock Movement Serializer
-# ---------------------------
 class StockMovementSerializer(serializers.ModelSerializer):
     item_detail = InventoryItemSerializer(source="item", read_only=True)
 
     class Meta:
         model = StockMovement
         fields = [
-            "id",
-            "item",
-            "item_detail",
-            "movement_type",
-            "quantity",
-            "reference",
-            "remarks",
-            "timestamp",
-            "created_by",
+            "id", "item", "item_detail", "movement_type", "quantity",
+            "reference", "remarks", "timestamp", "created_by",
         ]
         read_only_fields = ["id", "timestamp", "created_by"]
 
 
-# ---------------------------
-# Stock Action Serializers
-# ---------------------------
 class StockBaseActionSerializer(serializers.Serializer):
-    """Base serializer for stock actions (for consistency)."""
     reference = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
@@ -67,19 +38,33 @@ class StockBaseActionSerializer(serializers.Serializer):
 class StockInSerializer(StockBaseActionSerializer):
     quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
 
+    def validate(self, data):
+        q = data.get("quantity")
+        if q is None:
+            raise serializers.ValidationError("Quantity is required.")
+        return data
+
 
 class StockOutSerializer(StockBaseActionSerializer):
     quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
 
     def validate_quantity(self, value):
         item = self.context.get("item")
-        if item and item.quantity < value:
-            raise serializers.ValidationError("Insufficient stock for this operation.")
+        if item:
+            available = item.quantity
+            requested = value
+            if available < requested:
+                raise serializers.ValidationError("Insufficient stock for this operation.")
         return value
 
 
 class StockAdjustSerializer(StockBaseActionSerializer):
     delta = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+    def validate_delta(self, value):
+        if value == 0:
+            raise serializers.ValidationError("Delta cannot be zero.")
+        return value
 
 
 class StockTransferSerializer(StockBaseActionSerializer):
@@ -90,6 +75,22 @@ class StockTransferSerializer(StockBaseActionSerializer):
 
     def validate_quantity(self, value):
         item = self.context.get("item")
-        if item and item.quantity < value:
-            raise serializers.ValidationError("Insufficient stock for this operation.")
+        q = value
+        if item:
+            if item.quantity < q:
+                raise serializers.ValidationError("Insufficient stock for this operation.")
+        return q
+
+
+class MaterialRequestSerializer(serializers.ModelSerializer):
+    requested_by = serializers.StringRelatedField(read_only=True)
+
+    class Meta:
+        model = MaterialRequest
+        fields = ["id", "requested_by", "stock_item", "po_quantity", "status", "created_at", "updated_at"]
+        read_only_fields = ["created_at", "updated_at", "requested_by"]
+
+    def validate_po_quantity(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("PO quantity must be greater than zero.")
         return value

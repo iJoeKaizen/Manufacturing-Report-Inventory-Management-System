@@ -1,132 +1,115 @@
-from django.db.models.signals import post_save, pre_delete
+from django.db.models.signals import post_save, pre_delete, pre_save
+from django.db.models import F
 from django.dispatch import receiver
 from django.utils.timezone import now
 from django.core.exceptions import ValidationError
 from decimal import Decimal
+from rest_framework import serializers
 
-from reports.models import (
-    ProductionReport,
-    MaterialConsumption,
-    ReportAuditTrail,
-)
-from inventory.models import (
-    InventoryItem,
-    StockMovement,
-    UnitOfMeasure,
-    InventoryCategory,
-    BillOfMaterial,
-)
+from reports.models import ProductionReport, ReportAuditTrail
+from production.models import MaterialConsumption
+from inventory.models import InventoryItem, StockMovement, UnitOfMeasure, InventoryCategory, BillOfMaterial
 
-COMPLETED_STATES = {"completed", "APPROVED"}  # support both naming schemes
+# some constants
+COMPLETED_STATES = {"completed", "COMPLETED", "approved", "APPROVED"}
+CHANGE_TYPES = ReportAuditTrail.ChangeType
 
+# helper functions
+def log_audit(report, user, change_type):
+    ReportAuditTrail.objects.create(
+        report=report,
+        changed_by=user,
+        change_type=change_type,
+        timestamp=now(),
+    )
 
-# ------------------------
-# Inventory stock updates
-# ------------------------
+def validate_stock_for_approval(report):
+    bom_lines = BillOfMaterial.objects.filter(finished_item=report.product)
+    for line in bom_lines:
+        qty_required = line.quantity_required * report.quantity_produced
+        if line.raw_item.quantity < qty_required:
+            raise ValidationError(
+                f"Cannot approve report. Raw material {line.raw_item.name} not enough. Required {qty_required}, Available {line.raw_item.quantity}"
+            )
 
-@receiver(post_save, sender=ProductionReport)
-def on_report_completed(sender, instance: ProductionReport, created, **kwargs):
-    status_val = getattr(instance, "status", None)
-    if status_val not in COMPLETED_STATES:
-        return
-
-    product_sku = getattr(instance, "product_name", None) or getattr(instance, "job_number", None)
-    finished_qty = getattr(instance, "quantity", None) or getattr(instance, "quantity_produced", None)
-
-    if product_sku and finished_qty:
-        item, _ = InventoryItem.objects.get_or_create(
-            item_code=product_sku,
-            defaults=dict(
-                category=InventoryCategory.FINISHED,
-                description=f"Finished goods for {product_sku}",
-                unit_of_measure=UnitOfMeasure.CARTON,
-                quantity_available=Decimal("0"),
-                reorder_level=Decimal("0"),
-            ),
-        )
-        item.quantity_available = (item.quantity_available or Decimal("0")) + Decimal(finished_qty)
-        item.save(update_fields=["quantity_available", "last_updated"])
-        StockMovement.objects.create(
-            item=item,
-            movement_type="IN",
-            quantity=Decimal(finished_qty),
-            reference=getattr(instance, "job_id", None) or getattr(instance, "job_number", None),
-            remarks="Auto: production completed",
-        )
-
+# signals
+@receiver(pre_save, sender=ProductionReport)
+def pre_save_production_report(sender, instance, **kwargs):
+    if instance.pk:
+        old_instance = ProductionReport.objects.filter(pk=instance.pk).first()
+        if old_instance and old_instance.status != instance.status:
+            if instance.status in {"APPROVED", "approved"}:
+                validate_stock_for_approval(instance)
 
 @receiver(post_save, sender=ProductionReport)
-def handle_production_inventory(sender, instance, created, **kwargs):
-    if instance.status not in COMPLETED_STATES:
+def handle_production_report(sender, instance, created, **kwargs):
+    user = getattr(instance, "_changed_by", None)
+
+    if created:
+        log_audit(instance, user, CHANGE_TYPES.CREATE)
         return
 
-    # Deduct raw
-    for line in instance.materials_consumed.all():
-        StockMovement.objects.create(
-            item=line.raw_item,
-            movement_type="OUT",
-            quantity=line.quantity_used,
-            reference=f"Report {instance.id}",
-            remarks="Auto-deducted by production"
-        )
-        line.raw_item.quantity -= line.quantity_used
-        line.raw_item.save()
+    if instance.status in COMPLETED_STATES:
+        # remove raw materials
+        for line in instance.materials_consumed.all():
+            StockMovement.objects.create(
+                item=line.raw_item,
+                movement_type="OUT",
+                quantity=line.quantity_used,
+                reference=f"Report {instance.id}",
+                remarks="Auto-deducted by production",
+            )
+            InventoryItem.objects.filter(pk=line.raw_item.pk).update(
+                quantity=F("quantity") - line.quantity_used
+            )
 
-    # Add FG
-    if instance.finished_item and instance.output_quantity:
-        StockMovement.objects.create(
-            item=instance.finished_item,
-            movement_type="IN",
-            quantity=instance.output_quantity,
-            reference=f"Report {instance.id}",
-            remarks="Auto-added by production"
-        )
-        instance.finished_item.quantity += instance.output_quantity
-        instance.finished_item.save()
+        # add finished goods
+        product_sku = instance.product_name or instance.job_number
+        finished_qty = instance.quantity or instance.quantity_produced
 
+        if product_sku and finished_qty:
+            finished_item, _ = InventoryItem.objects.get_or_create(
+                item_code=product_sku,
+                defaults=dict(
+                    category=InventoryCategory.FINISHED,
+                    description=f"Finished goods for {product_sku}",
+                    unit_of_measure=UnitOfMeasure.CARTON,
+                    quantity=Decimal("0"),
+                    reorder_level=Decimal("0"),
+                ),
+            )
+            InventoryItem.objects.filter(pk=finished_item.pk).update(
+                quantity=F("quantity") + Decimal(finished_qty)
+            )
+            StockMovement.objects.create(
+                item=finished_item,
+                movement_type="IN",
+                quantity=Decimal(finished_qty),
+                reference=f"Report {instance.id}",
+                remarks="Auto: production completed",
+            )
 
-@receiver(post_save, sender=ProductionReport)
-def create_stock_movements_on_approval(sender, instance, created, **kwargs):
-    if instance.status != "APPROVED":
-        return
-
-    for consumption in instance.materials_consumed.all():
-        StockMovement.objects.get_or_create(
-            item=consumption.raw_item,
-            movement_type="OUT",
-            quantity=consumption.quantity_used,
-            reference=f"Report {instance.id}",
-            defaults={"remarks": "Auto-deducted via report approval"},
-        )
-
-
-def check_stock_before_approval(sender, instance, **kwargs):
-    if instance.approved:
-        bom_lines = BillOfMaterial.objects.filter(finished_item=instance.product)
-
-        for line in bom_lines:
-            qty_required = line.quantity_required * instance.quantity_produced
-            if line.raw_item.quantity < qty_required:
-                raise ValidationError(
-                    f"Cannot approve report. "
-                    f"Raw material {line.raw_item.name} insufficient. "
-                    f"Required {qty_required}, Available {line.raw_item.quantity}"
-                )
-
-
-# ------------------------
-# Audit Trail logging
-# ------------------------
+        log_audit(instance, user, CHANGE_TYPES.APPROVAL)
 
 @receiver(pre_delete, sender=ProductionReport)
 def log_report_delete(sender, instance, using, **kwargs):
-    """
-    Log DELETE in ReportAuditTrail when a ProductionReport is deleted.
-    This works for deletes in API, Admin, or shell.
-    """
-    ReportAuditTrail.objects.create(
-        report=instance,
-        changed_by=getattr(instance, "_deleted_by", None),  # set in view if available
-        change_type=ReportAuditTrail.ChangeType.DELETE,
-        timestamp=now(),
-    )
+    user = getattr(instance, "_deleted_by", None)
+    log_audit(instance, user, CHANGE_TYPES.DELETE)
+
+# serializer
+class ReportAuditTrailSerializer(serializers.ModelSerializer):
+    report_job_number = serializers.CharField(source="report.job_number", read_only=True)
+    changed_by_username = serializers.CharField(source="changed_by.username", read_only=True)
+
+    class Meta:
+        model = ReportAuditTrail
+        fields = [
+            "id",
+            "report",
+            "report_job_number",
+            "changed_by",
+            "changed_by_username",
+            "change_type",
+            "timestamp",
+        ]
+        read_only_fields = fields
